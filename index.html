@@ -825,7 +825,7 @@ const MN=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic
 // ══════════════════════════════════════════════════════════════
 // PERSISTENCIA localStorage
 // ══════════════════════════════════════════════════════════════
-function save(){
+function saveLocal(){
   try{localStorage.setItem('gas_eq',JSON.stringify(equipos));}catch(e){}
   try{localStorage.setItem('gas_rents',JSON.stringify(rents));}catch(e){}
   try{localStorage.setItem('gas_bases',JSON.stringify(bases));}catch(e){}
@@ -928,9 +928,8 @@ async function jbCreate(){
 }
 
 // Override save() to also push to cloud
-const _saveLocal=save;
 function save(){
-  _saveLocal();
+  saveLocal();
   if(jbKey&&jbBin)jbPush();
 }
 
