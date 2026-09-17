@@ -619,6 +619,15 @@ td:has(.tbl-thumb){position:relative;}
             <div class="fg"><label>Etapas previstas</label><input type="number" id="rEtapasPrev" placeholder="0" min="0"/></div>
             <div class="fg"><label>Etapas actuales</label><input type="number" id="rEtapasAct" placeholder="0" min="0"/></div>
           </div>
+          <div style="font-size:10px;font-weight:700;letter-spacing:.05em;color:var(--fg-muted);margin:6px 0 2px">CONDICIONES DE OPERACIÓN</div>
+          <div class="fg-row">
+            <div class="fg"><label>Presión de entrada <span style="color:#475569;font-size:9px">(bar)</span></label><input type="number" step="any" id="rPresEntrada" placeholder="0"/></div>
+            <div class="fg"><label>Presión de salida <span style="color:#475569;font-size:9px">(bar)</span></label><input type="number" step="any" id="rPresSalida" placeholder="0"/></div>
+          </div>
+          <div class="fg-row">
+            <div class="fg"><label>Caudal a suministrar <span style="color:#475569;font-size:9px">(Sm³/d)</span></label><input type="number" step="any" id="rCaudal" placeholder="0"/></div>
+            <div class="fg"><label>Temperatura gas entrada <span style="color:#475569;font-size:9px">(°C)</span></label><input type="number" step="any" id="rTempEntrada" placeholder="0"/></div>
+          </div>
           <div class="fg"><label>Yacimiento / Ubicación <span style="color:#475569;font-size:9px">(opcional)</span></label><input id="rUbicacion" placeholder="Ej: Loma La Lata — dejar vacío si no aplica"/></div>
           <div class="fg">
             <label>Ubicación en mapa</label>
@@ -724,6 +733,19 @@ td:has(.tbl-thumb){position:relative;}
   </div>
 </div>
 
+<!-- UNSAVED CHANGES MODAL -->
+<div class="modal-ov" id="unsavedModal">
+  <div class="modal" style="width:380px">
+    <h2 style="margin-bottom:4px">⚠ Cambios sin guardar</h2>
+    <p style="font-size:12px;color:var(--fg-muted);margin-bottom:16px">Tenés cambios sin guardar en este formulario. ¿Qué querés hacer?</p>
+    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn btn-s" id="unsavedCancelBtn">Cancelar</button>
+      <button class="btn btn-danger" id="unsavedDiscardBtn">Descartar</button>
+      <button class="btn btn-p" id="unsavedSaveBtn">✓ Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- LIGHTBOX -->
 <div id="lightbox">
   <button class="lb-close" id="lbClose">✕</button>
@@ -787,6 +809,9 @@ let mpmCallback = null;   // called with (lat,lng) on confirm
 let baseEditId = null;    // base being edited (null = new)
 let basePickerLat = null, basePickerLng = null;
 let mModalCoords = null;  // coords resolved from quick-modal ubicacion selection
+let formDirty = false;    // true si hay cambios sin guardar en el form de equipo u operación
+let dirtyContext = null;  // 'eq' | 'rent' — qué form está sucio
+let pendingNavAction = null; // acción a ejecutar una vez resuelto el aviso de cambios sin guardar
 let basesOpen = true;     // sidebar bases section open
 let baseMarkers = {};     // leaflet markers for bases
 
@@ -1037,7 +1062,7 @@ function renderMarkers(){
   });
 }
 map.on('zoomend',()=>{renderMarkers();renderBaseMarkers();});
-map.on('dblclick',e=>{L.DomEvent.stopPropagation(e);switchTab('equipos');openNewEqForm(e.latlng);showToast('📍 Coordenadas copiadas al formulario');});
+map.on('dblclick',e=>{L.DomEvent.stopPropagation(e);guardNav(()=>{switchTab('equipos');openNewEqForm(e.latlng);showToast('📍 Coordenadas copiadas al formulario');});});
 
 // ══════════════════════════════════════════════════════════════
 // BASES
@@ -1267,6 +1292,47 @@ document.getElementById('mSave').addEventListener('click',()=>{
 });
 
 // ══════════════════════════════════════════════════════════════
+// AVISO DE CAMBIOS SIN GUARDAR
+// ══════════════════════════════════════════════════════════════
+function markDirty(ctx){formDirty=true;dirtyContext=ctx;}
+function clearDirty(){formDirty=false;dirtyContext=null;}
+document.getElementById('eqFormBody').addEventListener('input',()=>markDirty('eq'));
+document.getElementById('eqFormBody').addEventListener('change',()=>markDirty('eq'));
+document.getElementById('opsDetailSplit').addEventListener('input',()=>markDirty('rent'));
+document.getElementById('opsDetailSplit').addEventListener('change',()=>markDirty('rent'));
+// Ejecuta `action` directo si no hay cambios sin guardar; si los hay, pregunta primero.
+function guardNav(action){
+  if(!formDirty){action();return;}
+  pendingNavAction=action;
+  document.getElementById('unsavedModal').classList.add('open');
+}
+document.getElementById('unsavedCancelBtn').addEventListener('click',()=>{
+  document.getElementById('unsavedModal').classList.remove('open');
+  pendingNavAction=null;
+});
+document.getElementById('unsavedDiscardBtn').addEventListener('click',()=>{
+  document.getElementById('unsavedModal').classList.remove('open');
+  clearDirty();
+  const act=pendingNavAction;pendingNavAction=null;
+  if(act)act();
+});
+document.getElementById('unsavedSaveBtn').addEventListener('click',()=>{
+  if(dirtyContext==='eq')document.getElementById('eqSaveBtn').click();
+  else if(dirtyContext==='rent')document.getElementById('rentSaveBtn').click();
+  document.getElementById('unsavedModal').classList.remove('open');
+  if(!formDirty){
+    const act=pendingNavAction;pendingNavAction=null;
+    if(act)act();
+  } else {
+    pendingNavAction=null; // no se pudo guardar (validación) — se queda en el form para corregir
+  }
+});
+window.addEventListener('beforeunload',e=>{
+  if(!formDirty)return;
+  e.preventDefault();e.returnValue='';
+});
+
+// ══════════════════════════════════════════════════════════════
 // TAB SWITCHING
 // ══════════════════════════════════════════════════════════════
 function switchTab(v){
@@ -1280,7 +1346,7 @@ function switchTab(v){
   if(v==='ops'){renderRentList();if(selRentId)renderRentDetail();}
   if(v==='equipos'){renderEqTable();}
 }
-document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>switchTab(t.dataset.v)));
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>guardNav(()=>switchTab(t.dataset.v))));
 
 // ══════════════════════════════════════════════════════════════
 // TAB EQUIPOS
@@ -1335,10 +1401,10 @@ function renderEqTable(){
   tbody.querySelectorAll('tr').forEach(tr=>{
     tr.addEventListener('click',e=>{
       if(e.target.classList.contains('del-btn')||e.target.classList.contains('edit-btn'))return;
-      openEditEqForm(tr.dataset.id);
+      guardNav(()=>openEditEqForm(tr.dataset.id));
     });
   });
-  tbody.querySelectorAll('.edit-btn').forEach(b=>b.addEventListener('click',()=>openEditEqForm(b.dataset.id)));
+  tbody.querySelectorAll('.edit-btn').forEach(b=>b.addEventListener('click',()=>guardNav(()=>openEditEqForm(b.dataset.id))));
   tbody.querySelectorAll('.del-btn').forEach(b=>b.addEventListener('click',()=>deleteEq(b.dataset.id)));
 }
 document.getElementById('eqSearch').addEventListener('input',renderEqTable);
@@ -1493,8 +1559,9 @@ function buildEqForm(eq){
     e.target.value='';
   });
 }
-document.getElementById('newEqBtn').addEventListener('click',()=>openNewEqForm());
+document.getElementById('newEqBtn').addEventListener('click',()=>guardNav(()=>openNewEqForm()));
 document.getElementById('eqCancelBtn').addEventListener('click',()=>{
+  clearDirty();
   editEqId=null;editEqIsNew=false;
   document.getElementById('eqFormBody').innerHTML=`<div class="empty-form"><div class="ei">➕</div><p>Hacé click en "+ Nuevo equipo" o seleccioná uno de la lista.</p></div>`;
   document.getElementById('eqFormActions').style.display='none';
@@ -1517,6 +1584,7 @@ document.getElementById('eqSaveBtn').addEventListener('click',()=>{
   save();renderMarkers();renderSidebar();renderStats();renderEqTable();checkFabricAlerts();
   document.getElementById('eqFormTitle').textContent='Editar equipo';
   document.getElementById('eqFormTopActions').style.display='flex';
+  clearDirty();
   showToast('✅ Equipo guardado');
 });
 document.getElementById('eqDelBtn').addEventListener('click',()=>deleteEq(editEqId));
@@ -1525,7 +1593,7 @@ function deleteEq(id){
   setPhotos(id,[]);
   equipos=equipos.filter(x=>x.id!==id);
   rents.forEach(r=>{if(r.equipoIds)r.equipoIds=r.equipoIds.filter(x=>x!==id);});
-  if(editEqId===id){editEqId=null;document.getElementById('eqFormBody').innerHTML='<div class="empty-form"><div class="ei">➕</div><p>Seleccioná un equipo.</p></div>';document.getElementById('eqFormActions').style.display='none';document.getElementById('eqFormTopActions').style.display='none';}
+  if(editEqId===id){editEqId=null;clearDirty();document.getElementById('eqFormBody').innerHTML='<div class="empty-form"><div class="ei">➕</div><p>Seleccioná un equipo.</p></div>';document.getElementById('eqFormActions').style.display='none';document.getElementById('eqFormTopActions').style.display='none';}
   save();renderMarkers();renderSidebar();renderStats();renderEqTable();renderRentList();
   showToast(`🗑 ${eq.nombre} eliminado`);
 }
@@ -1584,7 +1652,7 @@ function renderRentList(){
     </div>`;
   }).join('');
   list.querySelectorAll('.rent-card').forEach(el=>{
-    el.addEventListener('click',()=>{selRentId=el.dataset.id;renderRentList();renderRentDetail();});
+    el.addEventListener('click',()=>guardNav(()=>{selRentId=el.dataset.id;renderRentList();renderRentDetail();}));
   });
 }
 document.getElementById('rentSearch').addEventListener('input',renderRentList);
@@ -1617,7 +1685,7 @@ function renderRentDetail(){
   const empty=document.getElementById('opsDetailEmpty');
   const actions=document.getElementById('opsDetailActions');
   const title=document.getElementById('opsDetailTitle');
-  if(!r){split.style.display='none';empty.style.display='flex';actions.style.display='none';title.textContent='Seleccioná o creá una operación';return;}
+  if(!r){split.style.display='none';empty.style.display='flex';actions.style.display='none';title.textContent='Seleccioná o creá una operación';clearDirty();return;}
   split.style.display='flex';empty.style.display='none';actions.style.display='flex';
   title.textContent=r.codigo||(r.nombre||'Operación');
   // Fill form
@@ -1629,6 +1697,10 @@ function renderRentDetail(){
   document.getElementById('rFin').value=r.fin||'';
   document.getElementById('rEtapasPrev').value=r.etapasPrev||'';
   document.getElementById('rEtapasAct').value=r.etapasAct||'';
+  document.getElementById('rPresEntrada').value=r.presEntrada??'';
+  document.getElementById('rPresSalida').value=r.presSalida??'';
+  document.getElementById('rCaudal').value=r.caudal??'';
+  document.getElementById('rTempEntrada').value=r.tempEntrada??'';
   document.getElementById('rUbicacion').value=r.ubicacion||'';
   document.getElementById('rComentario').value=r.comentario||'';
   // map picker state
@@ -1636,6 +1708,7 @@ function renderRentDetail(){
   updateMapLocBtn();
   // assignment
   renderAssignment(r);
+  clearDirty();
 }
 
 // ── MAP PICKER MODAL ──────────────────────────────────────────
@@ -1771,13 +1844,13 @@ function renderAssignment(r){
   }));
 }
 
-document.getElementById('newRentBtn').addEventListener('click',()=>{
+document.getElementById('newRentBtn').addEventListener('click',()=>guardNav(()=>{
   const id='OP-'+Date.now().toString().slice(-6);
-  rents.push({id,codigo:'',nombre:'',operadora:'',cliente:'',ubicacion:'',lat:null,lng:null,inicio:'',fin:'',etapasPrev:0,etapasAct:0,comentario:'',equipoIds:[]});
+  rents.push({id,codigo:'',nombre:'',operadora:'',cliente:'',ubicacion:'',lat:null,lng:null,inicio:'',fin:'',etapasPrev:0,etapasAct:0,presEntrada:null,presSalida:null,caudal:null,tempEntrada:null,comentario:'',equipoIds:[]});
   selRentId=id;editRentIsNew=true;
   save();renderRentList();renderRentDetail();
   showToast('📋 Nueva operación creada');
-});
+}));
 
 document.getElementById('rentSaveBtn').addEventListener('click',()=>{
   const r=rents.find(x=>x.id===selRentId);if(!r)return;
@@ -1789,12 +1862,17 @@ document.getElementById('rentSaveBtn').addEventListener('click',()=>{
   r.fin=document.getElementById('rFin').value;
   r.etapasPrev=parseInt(document.getElementById('rEtapasPrev').value)||0;
   r.etapasAct=parseInt(document.getElementById('rEtapasAct').value)||0;
+  r.presEntrada=document.getElementById('rPresEntrada').value===''?null:parseFloat(document.getElementById('rPresEntrada').value);
+  r.presSalida=document.getElementById('rPresSalida').value===''?null:parseFloat(document.getElementById('rPresSalida').value);
+  r.caudal=document.getElementById('rCaudal').value===''?null:parseFloat(document.getElementById('rCaudal').value);
+  r.tempEntrada=document.getElementById('rTempEntrada').value===''?null:parseFloat(document.getElementById('rTempEntrada').value);
   r.ubicacion=document.getElementById('rUbicacion').value.trim();
   r.comentario=document.getElementById('rComentario').value.trim();
   r.lat=rentPickerLat;r.lng=rentPickerLng;
   save();renderRentList();renderRentDetail();showToast('✅ Operación guardada');
 });
 document.getElementById('rentCancelBtn').addEventListener('click',()=>{
+  clearDirty();
   selRentId=null;renderRentList();renderRentDetail();
 });
 document.getElementById('rentFinalizarBtn').addEventListener('click',()=>{
@@ -1929,10 +2007,12 @@ function renderGanttByOps(){
 }
 
 function selectRent(id){
-  switchTab('ops');
-  setTimeout(()=>{
-    selRentId=id;renderRentList();renderRentDetail();
-  },80);
+  guardNav(()=>{
+    switchTab('ops');
+    setTimeout(()=>{
+      selRentId=id;renderRentList();renderRentDetail();
+    },80);
+  });
 }
 
 // ══════════════════════════════════════════════════════════════
