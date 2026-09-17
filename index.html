@@ -843,18 +843,23 @@ function setPhotos(id,arr){try{if(!arr||!arr.length)localStorage.removeItem('gf_
 // JSONBIN SYNC
 // ══════════════════════════════════════════════════════════════
 const JB_BASE = 'https://api.jsonbin.io/v3';
-// Config vía link de un solo uso: #acceso=BASE64(key|bin)
+// Config vía link de un solo uso: #acceso=BASE64URL(key|bin)
 // No hay ninguna credencial en el código — solo quien recibe el link con el hash se autoconfigura.
+// Base64 "URL-safe" sin relleno (-, _, sin '=' ni '%') para que WhatsApp/mensajería no lo corte.
 (function(){
-  const m = location.hash.match(/acceso=([^&]+)/);
+  const m = location.hash.match(/acceso=([A-Za-z0-9_-]+)/);
   if(m){
     try{
-      const [k,b] = atob(decodeURIComponent(m[1])).split('|');
+      let s = m[1].replace(/-/g,'+').replace(/_/g,'/');
+      while(s.length % 4) s += '=';
+      const [k,b] = atob(s).split('|');
       if(k && b){
         localStorage.setItem('jb_key', k);
         localStorage.setItem('jb_bin', b);
+      } else {
+        console.warn('Link de acceso invalido: faltan datos');
       }
-    }catch(e){}
+    }catch(e){console.warn('Link de acceso invalido',e);}
     history.replaceState(null, '', location.pathname + location.search);
   }
 })();
