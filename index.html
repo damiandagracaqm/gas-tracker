@@ -72,6 +72,11 @@ header::after{
   color:#3a3c3e;text-transform:uppercase;
 }
 .powered-by strong{color:#4a4c4e;letter-spacing:2px;}
+.ro-badge{order:-1;margin-left:12px;font-size:10px;font-weight:700;letter-spacing:.05em;color:#fbbf24;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:6px;padding:4px 9px;white-space:nowrap;}
+body.read-only .edit-only{display:none!important;}
+body.read-only #eqFormActions,
+body.read-only #eqFormTopActions,
+body.read-only #opsDetailActions{display:none!important;}
 .stats{display:flex;gap:6px;font-size:10px;}
 .stat-badge{
   display:flex;align-items:center;gap:4px;
@@ -420,9 +425,9 @@ td:has(.tbl-thumb){position:relative;}
   <div class="powered-by">Powered by <strong>QM</strong></div>
   <div class="hdr-btns">
     <button class="btn btn-s" id="syncBtn" title="Sincronizar con la nube">☁ <span id="syncLabel">Sync</span></button>
-    <button class="btn btn-s" id="syncCfgBtn" title="Configurar sincronización en la nube" style="padding:5px 8px">⚙</button>
-    <label class="btn btn-s" style="cursor:pointer">📂 CSV<input type="file" accept=".csv" id="csvIn" style="display:none"/></label>
-    <label class="btn btn-s" style="cursor:pointer;background:rgba(0,255,246,.08);border-color:var(--primary-border)" title="Importar backup completo (JSON)">⬆ Importar<input type="file" accept=".json" id="jsonIn" style="display:none"/></label>
+    <button class="btn btn-s edit-only" id="syncCfgBtn" title="Configurar sincronización en la nube" style="padding:5px 8px">⚙</button>
+    <label class="btn btn-s edit-only" style="cursor:pointer">📂 CSV<input type="file" accept=".csv" id="csvIn" style="display:none"/></label>
+    <label class="btn btn-s edit-only" style="cursor:pointer;background:rgba(0,255,246,.08);border-color:var(--primary-border)" title="Importar backup completo (JSON)">⬆ Importar<input type="file" accept=".json" id="jsonIn" style="display:none"/></label>
     <button class="btn btn-s" id="exportBtn" title="Exportar todo (equipos, operaciones, bases, fotos)">⬇ Exportar</button>
   </div>
 </header>
@@ -469,7 +474,7 @@ td:has(.tbl-thumb){position:relative;}
     </div>
     <div class="sb-bases-list" id="sbBasesList">
       <div style="padding:6px 12px;">
-        <button class="btn btn-p btn-sm" onclick="openNewBaseModal()" style="width:100%;justify-content:center">+ Nueva base</button>
+        <button class="btn btn-p btn-sm edit-only" onclick="openNewBaseModal()" style="width:100%;justify-content:center">+ Nueva base</button>
       </div>
       <div id="basesList"></div>
     </div>
@@ -484,7 +489,7 @@ td:has(.tbl-thumb){position:relative;}
     <div class="panel-hdr">
       <h2>⊟ Equipos</h2>
       <div class="panel-hdr-actions">
-        <button class="btn btn-p" id="newEqBtn">+ Nuevo equipo</button>
+        <button class="btn btn-p edit-only" id="newEqBtn">+ Nuevo equipo</button>
       </div>
     </div>
     <!-- Barra de filtros y búsqueda -->
@@ -560,7 +565,7 @@ td:has(.tbl-thumb){position:relative;}
     <div class="panel-hdr">
       <h2>📋 Operaciones</h2>
       <div class="panel-hdr-actions">
-        <button class="btn btn-p" id="newRentBtn">+ Nueva</button>
+        <button class="btn btn-p edit-only" id="newRentBtn">+ Nueva</button>
       </div>
     </div>
     <div class="filter-bar">
@@ -689,7 +694,7 @@ td:has(.tbl-thumb){position:relative;}
     <div style="font-size:11px;color:var(--fg-muted);margin-top:4px">Para editar todos los campos usá la pestaña <strong style="color:var(--primary)">Equipos</strong>.</div>
     <div class="modal-acts">
       <button class="btn btn-s" id="mCancel">Cerrar</button>
-      <button class="btn btn-p" id="mSave">Guardar</button>
+      <button class="btn btn-p edit-only" id="mSave">Guardar</button>
     </div>
   </div>
 </div>
@@ -779,7 +784,7 @@ td:has(.tbl-thumb){position:relative;}
     </div>
     <div class="modal-acts">
       <button class="btn btn-s" id="bCancelBtn">Cancelar</button>
-      <button class="btn btn-p" id="bSaveBtn">Guardar base</button>
+      <button class="btn btn-p edit-only" id="bSaveBtn">Guardar base</button>
     </div>
   </div>
 </div>
@@ -868,19 +873,21 @@ function setPhotos(id,arr){try{if(!arr||!arr.length)localStorage.removeItem('gf_
 // JSONBIN SYNC
 // ══════════════════════════════════════════════════════════════
 const JB_BASE = 'https://api.jsonbin.io/v3';
-// Config vía link de un solo uso: #acceso=BASE64URL(key|bin)
+// Config vía link de un solo uso: #acceso=BASE64URL(key|bin) → edición, #ver=BASE64URL(key|bin) → solo lectura
 // No hay ninguna credencial en el código — solo quien recibe el link con el hash se autoconfigura.
 // Base64 "URL-safe" sin relleno (-, _, sin '=' ni '%') para que WhatsApp/mensajería no lo corte.
 (function(){
-  const m = location.hash.match(/acceso=([A-Za-z0-9_-]+)/);
+  const m = location.hash.match(/(acceso|ver)=([A-Za-z0-9_-]+)/);
   if(m){
+    const isView = m[1]==='ver';
     try{
-      let s = m[1].replace(/-/g,'+').replace(/_/g,'/');
+      let s = m[2].replace(/-/g,'+').replace(/_/g,'/');
       while(s.length % 4) s += '=';
       const [k,b] = atob(s).split('|');
       if(k && b){
         localStorage.setItem('jb_key', k);
         localStorage.setItem('jb_bin', b);
+        localStorage.setItem('ro_mode', isView?'1':'0');
       } else {
         console.warn('Link de acceso invalido: faltan datos');
       }
@@ -891,6 +898,12 @@ const JB_BASE = 'https://api.jsonbin.io/v3';
 let jbKey = localStorage.getItem('jb_key') || '';
 let jbBin = localStorage.getItem('jb_bin') || '';
 let jbSyncing = false;
+let readOnlyMode = localStorage.getItem('ro_mode')==='1';
+function blockIfReadOnly(){
+  if(!readOnlyMode)return false;
+  showToast('👁 Modo solo lectura — no podés editar',true);
+  return true;
+}
 
 function jbHeaders(){return{'Content-Type':'application/json','X-Master-Key':jbKey,'X-Bin-Private':'false'};}
 
@@ -1113,6 +1126,7 @@ function toggleBasesSection(){
 }
 
 function openNewBaseModal(){
+  if(blockIfReadOnly())return;
   baseEditId=null;basePickerLat=null;basePickerLng=null;
   document.getElementById('baseModalTitle').textContent='Nueva base';
   document.getElementById('bNombre').value='';
@@ -1134,8 +1148,12 @@ function openEditBaseModal(id){
   // close popup if open
   if(baseMarkers[id])baseMarkers[id].closePopup();
   document.getElementById('baseModal').classList.add('open');
+  if(readOnlyMode){
+    document.querySelectorAll('#baseModal input, #baseModal select, #baseModal textarea').forEach(el=>el.disabled=true);
+  }
 }
 function deleteBase(id){
+  if(blockIfReadOnly())return;
   const b=bases.find(x=>x.id===id);if(!b||!confirm(`¿Eliminar base "${b.nombre}"?`))return;
   bases=bases.filter(x=>x.id!==id);
   save();renderBaseMarkers();renderBases();showToast(`🗑 ${b.nombre} eliminada`);
@@ -1151,6 +1169,7 @@ document.getElementById('openBaseMapBtn').addEventListener('click',()=>{
 document.getElementById('bCancelBtn').addEventListener('click',()=>document.getElementById('baseModal').classList.remove('open'));
 document.getElementById('baseModal').addEventListener('click',e=>{if(e.target===document.getElementById('baseModal'))document.getElementById('baseModal').classList.remove('open');});
 document.getElementById('bSaveBtn').addEventListener('click',()=>{
+  if(blockIfReadOnly())return;
   const nombre=(document.getElementById('bNombre').value||'').trim();
   if(!nombre){showToast('Ingresá un nombre para la base',true);return;}
   const data={id:baseEditId||'BASE-'+Date.now().toString().slice(-6),nombre,tipo:document.getElementById('bTipo').value,desc:document.getElementById('bDesc').value.trim(),lat:basePickerLat,lng:basePickerLng};
@@ -1276,10 +1295,13 @@ function openQuickModal(id){
     requestAnimationFrame(()=>{this.value=v;});
   };
   document.getElementById('modalOv').classList.add('open');
+  document.getElementById('mEstado').disabled=readOnlyMode;
+  document.getElementById('mUbicacion').disabled=readOnlyMode;
 }
 document.getElementById('mCancel').addEventListener('click',()=>document.getElementById('modalOv').classList.remove('open'));
 document.getElementById('modalOv').addEventListener('click',e=>{if(e.target===document.getElementById('modalOv'))document.getElementById('modalOv').classList.remove('open');});
 document.getElementById('mSave').addEventListener('click',()=>{
+  if(blockIfReadOnly())return;
   const i=equipos.findIndex(x=>x.id===quickEditId);
   if(i>=0){
     equipos[i].estado=document.getElementById('mEstado').value;
@@ -1394,7 +1416,7 @@ function renderEqTable(){
       <td style="color:#a78bfa;font-size:11px">${nR||'—'}</td>
       <td><div class="tbl-actions">
         <button class="btn btn-s btn-sm edit-btn" data-id="${eq.id}">✏</button>
-        <button class="btn-dsm del-btn" data-id="${eq.id}">✕</button>
+        <button class="btn-dsm del-btn edit-only" data-id="${eq.id}">✕</button>
       </div></td>
     </tr>`;
   }).join('');
@@ -1419,6 +1441,7 @@ document.querySelector('#vEquipos table').addEventListener('click',e=>{
 });
 
 function openNewEqForm(latlng=null){
+  if(blockIfReadOnly())return;
   editEqId=null;editEqIsNew=true;editEqPhotos=[];
   document.getElementById('eqFormTitle').textContent='Nuevo equipo';
   document.getElementById('eqFormTopActions').style.display='none';
@@ -1558,6 +1581,9 @@ function buildEqForm(eq){
     files.forEach(f=>{const r=new FileReader();r.onload=ev=>{editEqPhotos.push(ev.target.result);loaded++;if(loaded===files.length)renderFotoGallery();};r.readAsDataURL(f);});
     e.target.value='';
   });
+  if(readOnlyMode){
+    document.querySelectorAll('#eqFormBody input, #eqFormBody select, #eqFormBody textarea').forEach(el=>el.disabled=true);
+  }
 }
 document.getElementById('newEqBtn').addEventListener('click',()=>guardNav(()=>openNewEqForm()));
 document.getElementById('eqCancelBtn').addEventListener('click',()=>{
@@ -1569,6 +1595,7 @@ document.getElementById('eqCancelBtn').addEventListener('click',()=>{
   renderEqTable();
 });
 document.getElementById('eqSaveBtn').addEventListener('click',()=>{
+  if(blockIfReadOnly())return;
   const id=(document.getElementById('fId').value||'').trim();
   const nombre=(document.getElementById('fNombre').value||'').trim();
   if(!id||!nombre){showToast('ID y nombre son requeridos',true);return;}
@@ -1589,6 +1616,7 @@ document.getElementById('eqSaveBtn').addEventListener('click',()=>{
 });
 document.getElementById('eqDelBtn').addEventListener('click',()=>deleteEq(editEqId));
 function deleteEq(id){
+  if(blockIfReadOnly())return;
   const eq=equipos.find(x=>x.id===id);if(!eq||!confirm(`¿Eliminar ${eq.nombre}?`))return;
   setPhotos(id,[]);
   equipos=equipos.filter(x=>x.id!==id);
@@ -1708,6 +1736,9 @@ function renderRentDetail(){
   updateMapLocBtn();
   // assignment
   renderAssignment(r);
+  if(readOnlyMode){
+    document.querySelectorAll('#opsDetailSplit input, #opsDetailSplit select, #opsDetailSplit textarea').forEach(el=>el.disabled=true);
+  }
   clearDirty();
 }
 
@@ -1784,7 +1815,7 @@ function renderAssignment(r){
         <div class="assign-eq-name">${eq.nombre}</div>
         <div class="assign-eq-sub"><span style="color:var(--primary);font-weight:700">${eq.id}</span> · ${eq.tipo} · <span class="${BC[eq.estado]||''}" style="font-size:9px;padding:1px 5px;border-radius:8px">${BL[eq.estado]||''}</span></div>
       </div>
-      <button class="btn btn-dsm unassign-btn" data-id="${id}" style="background:#7f1d1d;color:#fca5a5">✕ Quitar</button>
+      <button class="btn btn-dsm unassign-btn edit-only" data-id="${id}" style="background:#7f1d1d;color:#fca5a5">✕ Quitar</button>
     </div>`;
   }).join(''):`<div style="font-size:11px;color:#475569;padding:4px 0 12px">Sin equipos asignados.</div>`;
 
@@ -1800,7 +1831,7 @@ function renderAssignment(r){
     const clashNote=hasClash?`<div style="color:var(--primary);font-size:10px;margin-top:2px">🚫 Ocupado en <strong>${clashLabel}</strong> (${fmtD(clash[0].inicio)} → ${fmtD(clash[0].fin)})</div>`:'';
     const assignBtn=hasClash
       ?`<button class="btn btn-sm" disabled style="background:var(--sec);color:#475569;border:1px solid #2a2d3e;cursor:not-allowed" title="Equipo ocupado en ${clashLabel}">Ocupado</button>`
-      :`<button class="btn btn-p btn-sm assign-btn" data-id="${eq.id}">+ Asignar</button>`;
+      :`<button class="btn btn-p btn-sm assign-btn edit-only" data-id="${eq.id}">+ Asignar</button>`;
     return `<div class="assign-eq-item" style="${hasClash?'opacity:.75':''}">
       ${thumb}
       <div class="assign-eq-info" style="flex:1;min-width:0">
@@ -1821,6 +1852,7 @@ function renderAssignment(r){
     ${availableHtml}
   `;
   body.querySelectorAll('.assign-btn').forEach(b=>b.addEventListener('click',()=>{
+    if(blockIfReadOnly())return;
     const r2=rents.find(x=>x.id===selRentId);if(!r2)return;
     // Hard block: verify no date overlap with any other rent
     const eqId=b.dataset.id;
@@ -1837,6 +1869,7 @@ function renderAssignment(r){
     showToast(`✅ ${equipos.find(x=>x.id===eqId)?.nombre} asignado`);
   }));
   body.querySelectorAll('.unassign-btn').forEach(b=>b.addEventListener('click',()=>{
+    if(blockIfReadOnly())return;
     const r2=rents.find(x=>x.id===selRentId);if(!r2)return;
     r2.equipoIds=(r2.equipoIds||[]).filter(x=>x!==b.dataset.id);
     save();renderAssignment(r2);renderRentList();
@@ -1845,6 +1878,7 @@ function renderAssignment(r){
 }
 
 document.getElementById('newRentBtn').addEventListener('click',()=>guardNav(()=>{
+  if(blockIfReadOnly())return;
   const id='OP-'+Date.now().toString().slice(-6);
   rents.push({id,codigo:'',nombre:'',operadora:'',cliente:'',ubicacion:'',lat:null,lng:null,inicio:'',fin:'',etapasPrev:0,etapasAct:0,presEntrada:null,presSalida:null,caudal:null,tempEntrada:null,comentario:'',equipoIds:[]});
   selRentId=id;editRentIsNew=true;
@@ -1853,6 +1887,7 @@ document.getElementById('newRentBtn').addEventListener('click',()=>guardNav(()=>
 }));
 
 document.getElementById('rentSaveBtn').addEventListener('click',()=>{
+  if(blockIfReadOnly())return;
   const r=rents.find(x=>x.id===selRentId);if(!r)return;
   r.codigo=document.getElementById('rCodigo').value.trim();
   r.nombre=document.getElementById('rNombre').value.trim();
@@ -1876,6 +1911,7 @@ document.getElementById('rentCancelBtn').addEventListener('click',()=>{
   selRentId=null;renderRentList();renderRentDetail();
 });
 document.getElementById('rentFinalizarBtn').addEventListener('click',()=>{
+  if(blockIfReadOnly())return;
   const r=rents.find(x=>x.id===selRentId);if(!r)return;
   const st=rentStatus(r);
   if(st==='Finalizada'){showToast('Esta operación ya está finalizada',true);return;}
@@ -1890,6 +1926,7 @@ document.getElementById('rentFinalizarBtn').addEventListener('click',()=>{
   showToast(`✓ Operación finalizada`);
 });
 document.getElementById('rentDelBtn').addEventListener('click',()=>{
+  if(blockIfReadOnly())return;
   const r=rents.find(x=>x.id===selRentId);
   if(!r||!confirm(`¿Eliminar operación "${r.codigo||r.nombre||r.id}"?`))return;
   rents=rents.filter(x=>x.id!==selRentId);selRentId=null;
@@ -2019,6 +2056,7 @@ function selectRent(id){
 // CSV CARGA
 // ══════════════════════════════════════════════════════════════
 document.getElementById('csvIn').addEventListener('change',e=>{
+  if(blockIfReadOnly()){e.target.value='';return;}
   const f=e.target.files[0];if(!f)return;
   Papa.parse(f,{header:true,skipEmptyLines:true,complete:res=>{
     const imported=res.data.map(r=>({
@@ -2063,6 +2101,7 @@ document.getElementById('exportBtn').addEventListener('click',()=>{
 
 // IMPORT JSON — restaurar backup completo
 document.getElementById('jsonIn').addEventListener('change',e=>{
+  if(blockIfReadOnly()){e.target.value='';return;}
   const f=e.target.files[0];if(!f)return;
   const reader=new FileReader();
   reader.onload=ev=>{
@@ -2141,6 +2180,13 @@ function renderAll(){
 load();
 renderAll();
 wireSyncModal();
+document.body.classList.toggle('read-only',readOnlyMode);
+if(readOnlyMode){
+  const badge=document.createElement('div');
+  badge.className='ro-badge';
+  badge.textContent='👁 SOLO LECTURA';
+  document.querySelector('header')?.appendChild(badge);
+}
 // Pull from cloud on startup if configured (after local render so UI is never blank)
 if(jbKey&&jbBin){
   jbPull().then(ok=>{if(!ok)console.warn('Cloud sync unavailable, using local data.');});
