@@ -1537,8 +1537,9 @@ function renderFotoGallery(){
   }));
 }
 // Redimensiona y comprime una foto antes de guardarla — la nube gratuita tiene un límite
-// de tamaño chico y las fotos sin comprimir lo superan fácil.
-function compressImage(file,maxDim=1280,quality=0.72){
+// de tamaño muy chico (~100KB en total) y las fotos sin comprimir lo superan fácil.
+// Compresión agresiva + reintentos: baja la calidad hasta entrar en el presupuesto de tamaño.
+function compressImage(file,maxDim=640,quality=0.45,maxBytes=35000){
   return new Promise((resolve,reject)=>{
     const reader=new FileReader();
     reader.onload=ev=>{
@@ -1551,7 +1552,13 @@ function compressImage(file,maxDim=1280,quality=0.72){
         const canvas=document.createElement('canvas');
         canvas.width=w;canvas.height=h;
         canvas.getContext('2d').drawImage(img,0,0,w,h);
-        resolve(canvas.toDataURL('image/jpeg',quality));
+        let q=quality,out=canvas.toDataURL('image/jpeg',q);
+        // Si todavía pesa mucho, seguimos bajando la calidad hasta 0.2 como mínimo
+        let attempts=0;
+        while(out.length>maxBytes&&q>0.2&&attempts<5){
+          q-=0.1;out=canvas.toDataURL('image/jpeg',q);attempts++;
+        }
+        resolve(out);
       };
       img.onerror=()=>reject(new Error('No se pudo leer la imagen'));
       img.src=ev.target.result;
