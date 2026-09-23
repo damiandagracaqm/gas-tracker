@@ -665,6 +665,8 @@ td:has(.tbl-thumb){position:relative;}
       <button class="gantt-mode-btn active" id="gModeEq" onclick="setGanttMode('equipo')">Por Equipo</button>
       <button class="gantt-mode-btn" id="gModeOp" onclick="setGanttMode('operacion')">Por Operación</button>
     </div>
+    <select id="gFilterOperadora" style="margin-left:12px;font-size:10px;padding:4px 6px"><option value="todas">Todas las operadoras</option></select>
+    <select id="gFilterCliente" style="margin-left:6px;font-size:10px;padding:4px 6px"><option value="todas">Todos los clientes</option></select>
     <div class="gantt-leg">
       <div class="gl-item"><div class="gl-dot" style="background:#3b82f6"></div>En curso</div>
       <div class="gl-item"><div class="gl-dot" style="background:#22c55e"></div>Planificada</div>
@@ -836,6 +838,8 @@ let eqFilterRentals = 'todos';
 let rentFilterStatus = 'todas';
 let rentSortBy = 'fecha-desc';
 let ganttMode = 'equipo'; // 'equipo' | 'operacion'
+let ganttFilterOperadora = 'todas';
+let ganttFilterCliente = 'todas';
 // Sidebar sort
 let sbSortCol = 'nombre';
 let sbSortDir = 1;
@@ -1944,6 +1948,32 @@ function setGanttMode(mode){
   renderGantt();
 }
 
+function populateGanttFilters(){
+  const opSel=document.getElementById('gFilterOperadora');
+  const clSel=document.getElementById('gFilterCliente');
+  const operadoras=[...new Set(rents.map(r=>(r.operadora||'').trim()).filter(Boolean))].sort();
+  const clientes=[...new Set(rents.map(r=>(r.cliente||'').trim()).filter(Boolean))].sort();
+  opSel.innerHTML=`<option value="todas">Todas las operadoras</option>${operadoras.map(o=>`<option value="${o.replace(/"/g,'&quot;')}">${o}</option>`).join('')}`;
+  clSel.innerHTML=`<option value="todas">Todos los clientes</option>${clientes.map(c=>`<option value="${c.replace(/"/g,'&quot;')}">${c}</option>`).join('')}`;
+  opSel.value=operadoras.includes(ganttFilterOperadora)?ganttFilterOperadora:'todas';
+  clSel.value=clientes.includes(ganttFilterCliente)?ganttFilterCliente:'todas';
+  ganttFilterOperadora=opSel.value;ganttFilterCliente=clSel.value;
+}
+document.getElementById('gFilterOperadora').addEventListener('change',e=>{ganttFilterOperadora=e.target.value;renderGantt();});
+document.getElementById('gFilterCliente').addEventListener('change',e=>{ganttFilterCliente=e.target.value;renderGantt();});
+function passesGanttFilter(r){
+  if(ganttFilterOperadora!=='todas'&&(r.operadora||'').trim()!==ganttFilterOperadora)return false;
+  if(ganttFilterCliente!=='todas'&&(r.cliente||'').trim()!==ganttFilterCliente)return false;
+  return true;
+}
+// Distancia en días de una operación respecto a hoy (0 = en curso, positivo = cuánto falta o cuánto pasó)
+function opProximityDays(r){
+  const today=new Date().toISOString().slice(0,10);
+  if(r.inicio<=today&&r.fin>=today)return 0;
+  const ref=r.inicio>today?r.inicio:r.fin;
+  return Math.abs((new Date(ref)-new Date(today))/86400000);
+}
+
 function buildTimeline(){
   const today=new Date();today.setHours(0,0,0,0);
   const ws=new Date(today);ws.setMonth(ws.getMonth()-2);ws.setDate(1);
@@ -1957,6 +1987,7 @@ function buildTimeline(){
 }
 
 function renderGantt(){
+  populateGanttFilters();
   if(ganttMode==='operacion'){renderGanttByOps();return;}
   const wrap=document.getElementById('ganttWrap');
   if(!equipos.length&&!rents.length){wrap.innerHTML='<div class="gantt-empty">Cargá equipos y creá operaciones para ver el Gantt.</div>';return;}
@@ -1970,7 +2001,7 @@ function renderGantt(){
     const rows=eqs.map(eq=>{
       const foto=getPhoto(eq.id);
       const lbl=foto?`<img class="g-lbl-img" src="${foto}"/>`:`<span class="g-lbl-ico">${EMOJI[eq.tipo]||'⚪'}</span>`;
-      const eqRents=rents.filter(r=>(r.equipoIds||[]).includes(eq.id)&&r.inicio&&r.fin);
+      const eqRents=rents.filter(r=>(r.equipoIds||[]).includes(eq.id)&&r.inicio&&r.fin&&passesGanttFilter(r));
       let bars='';
       if(eqRents.length){
         eqRents.forEach(r=>{
@@ -2002,7 +2033,7 @@ function renderGantt(){
 
 function renderGanttByOps(){
   const wrap=document.getElementById('ganttWrap');
-  const opsWithDates=rents.filter(r=>r.inicio&&r.fin);
+  const opsWithDates=rents.filter(r=>r.inicio&&r.fin&&passesGanttFilter(r));
   if(!opsWithDates.length){wrap.innerHTML='<div class="gantt-empty">No hay operaciones con fechas definidas.</div>';return;}
   const{pct,tp,mhdr}=buildTimeline();
 
@@ -2011,6 +2042,8 @@ function renderGanttByOps(){
 
   const byStatus={'En curso':[],'Planificada':[],'Finalizada':[]};
   opsWithDates.forEach(r=>{const st=rentStatus(r);if(byStatus[st])byStatus[st].push(r);});
+  // Ordenar cada grupo de la operación más próxima a hoy a la más lejana
+  Object.values(byStatus).forEach(list=>list.sort((a,b)=>opProximityDays(a)-opProximityDays(b)));
 
   const groups=ORDER.map(st=>{
     const ops=byStatus[st];
