@@ -902,6 +902,7 @@ const JB_BASE = 'https://api.jsonbin.io/v3';
 let jbKey = localStorage.getItem('jb_key') || '';
 let jbBin = localStorage.getItem('jb_bin') || '';
 let jbSyncing = false;
+let jbLastPushFailed = false;
 let readOnlyMode = localStorage.getItem('ro_mode')==='1';
 function blockIfReadOnly(){
   if(!readOnlyMode)return false;
@@ -940,10 +941,21 @@ async function jbPush(){
     const fotos={};
     for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('gf_'))fotos[k]=localStorage.getItem(k);}
     const data={version:2,updatedAt:new Date().toISOString(),equipos,rents,bases,fotos};
-    const r=await fetch(`${JB_BASE}/b/${jbBin}`,{method:'PUT',headers:jbHeaders(),body:JSON.stringify(data)});
-    if(!r.ok)throw new Error(r.status);
-  }catch(e){console.warn('jbPush error',e);}
-  jbSyncing=false;
+    const body=JSON.stringify(data);
+    const r=await fetch(`${JB_BASE}/b/${jbBin}`,{method:'PUT',headers:jbHeaders(),body});
+    if(!r.ok){
+      const tooBig=r.status===400||r.status===413||body.length>90000;
+      showToast(tooBig
+        ?'❌ No se pudo sincronizar: las fotos superan el límite de la nube gratuita. Tus cambios quedaron guardados solo en este navegador.'
+        :`❌ No se pudo sincronizar con la nube (error ${r.status}). Tus cambios quedaron guardados solo en este navegador.`,true);
+      jbLastPushFailed=true;jbSyncing=false;return false;
+    }
+    jbLastPushFailed=false;jbSyncing=false;return true;
+  }catch(e){
+    console.warn('jbPush error',e);
+    showToast('❌ No se pudo conectar con la nube. Tus cambios quedaron guardados solo en este navegador.',true);
+    jbLastPushFailed=true;jbSyncing=false;return false;
+  }
 }
 
 async function jbPull(showToastOnOk=false){
@@ -957,8 +969,9 @@ async function jbPull(showToastOnOk=false){
     equipos=data.equipos||[];
     rents=data.rents||[];
     bases=data.bases||[];
-    // restore photos
-    if(data.fotos){
+    // restore photos — solo si la nube realmente trae fotos (evita borrar fotos locales
+    // cuando la nube está vacía/desactualizada por un push anterior fallido)
+    if(data.fotos&&Object.keys(data.fotos).length){
       const old=[];for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('gf_'))old.push(k);}
       old.forEach(k=>localStorage.removeItem(k));
       Object.entries(data.fotos).forEach(([k,v])=>{try{localStorage.setItem(k,v);}catch(e){}});
@@ -1013,6 +1026,10 @@ function wireSyncModal(){
       setSyncStatus('');
       document.getElementById('syncModal').classList.add('open');
     } else {
+      const warnMsg=jbLastPushFailed
+        ?'⚠ Tu último guardado NO llegó a subirse a la nube. Si sincronizás ahora vas a PERDER esos cambios (se van a reemplazar por lo que hay en la nube).\n\n¿Sincronizar de todas formas?'
+        :'Esto va a reemplazar los datos de este navegador por los que estén guardados en la nube. Cualquier cambio reciente que no se haya subido se va a perder.\n\n¿Continuar?';
+      if(!confirm(warnMsg))return;
       showToast('☁ Actualizando desde la nube...');
       const ok=await jbPull(true);
       if(!ok)showToast('Error al conectar con la nube',true);
@@ -1519,6 +1536,30 @@ function renderFotoGallery(){
     e.preventDefault();editEqPhotos.splice(parseInt(b.dataset.i),1);renderFotoGallery();
   }));
 }
+// Redimensiona y comprime una foto antes de guardarla — la nube gratuita tiene un límite
+// de tamaño chico y las fotos sin comprimir lo superan fácil.
+function compressImage(file,maxDim=1280,quality=0.72){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const img=new Image();
+      img.onload=()=>{
+        let w=img.width,h=img.height;
+        if(w>maxDim||h>maxDim){
+          if(w>h){h=Math.round(h*maxDim/w);w=maxDim;}else{w=Math.round(w*maxDim/h);h=maxDim;}
+        }
+        const canvas=document.createElement('canvas');
+        canvas.width=w;canvas.height=h;
+        canvas.getContext('2d').drawImage(img,0,0,w,h);
+        resolve(canvas.toDataURL('image/jpeg',quality));
+      };
+      img.onerror=()=>reject(new Error('No se pudo leer la imagen'));
+      img.src=ev.target.result;
+    };
+    reader.onerror=()=>reject(new Error('No se pudo leer el archivo'));
+    reader.readAsDataURL(file);
+  });
+}
 function buildEqForm(eq){
   editEqPhotos=eq.id?[...getPhotos(eq.id)]:[];
   document.getElementById('eqFormBody').innerHTML=`
@@ -1579,10 +1620,13 @@ function buildEqForm(eq){
   });
   renderFotoGallery();
   // foto handlers
-  document.getElementById('fotoInp').addEventListener('change',e=>{
+  document.getElementById('fotoInp').addEventListener('change',async e=>{
     const files=Array.from(e.target.files);
-    let loaded=0;
-    files.forEach(f=>{const r=new FileReader();r.onload=ev=>{editEqPhotos.push(ev.target.result);loaded++;if(loaded===files.length)renderFotoGallery();};r.readAsDataURL(f);});
+    for(const f of files){
+      try{editEqPhotos.push(await compressImage(f));}
+      catch(err){showToast('No se pudo procesar una foto',true);}
+    }
+    renderFotoGallery();
     e.target.value='';
   });
   if(readOnlyMode){
