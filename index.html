@@ -257,6 +257,20 @@ input[type=date]{color-scheme:dark;}
 .ldm-tbl input:disabled{color:var(--fg);}
 .ldm-tbl .c-cant{width:64px;}.ldm-tbl .c-un{width:70px;}.ldm-tbl .c-x{width:28px;}
 .ldm-tbl .c-kit{width:130px;}.ldm-tbl .c-pn{width:130px;}.ldm-tbl .c-desc{min-width:240px;}
+.ldm-tbl .c-ref{width:110px;}.ldm-tbl .c-pr{width:90px;}.ldm-tbl .c-prov{width:140px;}
+.ldm-tbl .c-foto{width:86px;white-space:nowrap;}
+.ldm-thumb{width:34px;height:34px;object-fit:cover;border-radius:4px;border:1px solid rgba(0,255,246,.2);cursor:zoom-in;vertical-align:middle;}
+.ldm-foto-btn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:4px;border:1px dashed rgba(0,255,246,.25);color:var(--fg-muted);cursor:pointer;font-size:12px;vertical-align:middle;margin-left:3px;}
+.ldm-foto-btn:hover{border-color:var(--primary);color:var(--primary);}
+.ldm-pick{position:relative;}
+.ldm-pick input{background:var(--sec);border:1px solid rgba(255,255,255,.08);border-radius:12px;color:var(--fg);font-size:11px;padding:4px 10px;font-family:inherit;outline:none;width:320px;max-width:70vw;}
+.ldm-pick input:focus{border-color:rgba(0,255,246,.4);}
+.ldm-pick-dd{display:none;position:absolute;left:0;top:calc(100% + 3px);width:440px;max-width:85vw;max-height:320px;overflow:auto;background:#1d2022;border:1px solid rgba(0,255,246,.25);border-radius:6px;z-index:50;box-shadow:0 8px 30px rgba(0,0,0,.5);}
+.ldm-pick-dd.open{display:block;}
+.ldm-pick-o{padding:7px 10px;font-size:11px;color:var(--fg);cursor:pointer;border-bottom:1px solid rgba(255,255,255,.03);}
+.ldm-pick-o b{color:var(--primary);font-weight:700;margin-right:6px;}
+.ldm-pick-o small{color:var(--fg-muted);}
+.ldm-pick-o:hover,.ldm-pick-o.act{background:rgba(0,255,246,.1);}
 .ldm-del{background:none;border:none;color:#64748b;cursor:pointer;font-size:11px;padding:4px;}
 .ldm-del:hover{color:#f87171;}
 .ldm-eq-box{margin:4px 0 11px;padding:8px 10px;border:1px solid rgba(0,255,246,.12);border-radius:6px;display:flex;align-items:center;gap:8px;font-size:11px;}
@@ -2486,9 +2500,13 @@ function checkFabricAlerts(){
 // (el principal tiene límite de tamaño). El bin principal solo guarda el puntero ldmBin.
 // ══════════════════════════════════════════════════════════════
 const LDM_COLS=[
-  ['kit','Kit / Sistema','c-kit'],['parte','N° de parte','c-pn'],['desc','Descripción','c-desc'],
-  ['cant','Cant.','c-cant'],['unidad','Unidad','c-un'],['proveedor','Proveedor',''],['notas','Notas',''],
+  ['kit','Kit / Sistema','c-kit'],['parte','Part number','c-pn'],['desc','Descripción','c-desc'],
+  ['cant','Cant.','c-cant'],['foto','Foto','c-foto'],['refqm','Ref. interna QM','c-ref'],
+  ['proveedor','Proveedor','c-prov'],['precio','Precio','c-pr'],
 ];
+// Campos de versiones anteriores: se conservan en los datos y se exportan si tienen algo
+const LDM_OLD_COLS=[['unidad','Unidad'],['notas','Notas']];
+function normTxt(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
 function loadLdms(){try{const d=localStorage.getItem('gas_ldms');if(d)ldms=JSON.parse(d)||[];}catch(e){ldms=[];}}
 let ldmPushT=null, ldmPushFailed=false;
 function saveLdms(){
@@ -2574,17 +2592,18 @@ function renderLdmDetail(){
   if(!l.items)l.items=[];if(!l.equipoIds)l.equipoIds=[];
   const dis=readOnlyMode?'disabled':'';
   // equipos asignables (los de otras listas se muestran indicando cuál tienen)
-  const opts=equipos.filter(e=>!l.equipoIds.includes(e.id)).sort((a,b)=>(a.tipo+a.nombre).localeCompare(b.tipo+b.nombre))
-    .map(e=>{const o=ldmOfEq(e.id);return `<option value="${escH(e.id)}">${escH(e.id)} — ${escH(e.nombre)}${o?` (tiene: ${escH(o.nombre)})`:''}</option>`;}).join('');
+  const asignables=equipos.filter(e=>!l.equipoIds.includes(e.id)).sort((a,b)=>String(a.id).localeCompare(String(b.id),undefined,{numeric:true}));
   const chips=l.equipoIds.map(id=>`<span class="ldm-chip"><b>${escH(id)}</b>${escH(eqLabel(id))}<button class="edit-only" data-unassign="${escH(id)}" title="Quitar">✕</button></span>`).join('')||`<span style="font-size:11px;color:var(--fg-muted)">Sin equipos asignados.</span>`;
   // ítems agrupados por kit, filtrados
-  const q=ldmItemQ.toLowerCase();
-  const idx=l.items.map((it,i)=>i).filter(i=>{const it=l.items[i];return !q||LDM_COLS.map(([k])=>it[k]||'').join(' ').toLowerCase().includes(q);});
+  const q=normTxt(ldmItemQ);
+  const idx=l.items.map((it,i)=>i).filter(i=>{const it=l.items[i];return !q||normTxt(LDM_COLS.filter(([k])=>k!=='foto').map(([k])=>it[k]||'').join(' ')).includes(q);});
   const groups={};idx.forEach(i=>{const k=(l.items[i].kit||'').trim()||'Sin kit / sistema';(groups[k]=groups[k]||[]).push(i);});
   const kits=Object.keys(groups).sort((a,b)=>a==='Sin kit / sistema'?1:b==='Sin kit / sistema'?-1:a.localeCompare(b));
   const kitList=[...new Set(l.items.map(it=>(it.kit||'').trim()).filter(Boolean))].sort();
   const rows=kits.map(k=>`<tr class="kit-row"><td colspan="${LDM_COLS.length+1}">${escH(k)} <span style="color:var(--fg-muted);font-weight:400">(${groups[k].length})</span></td></tr>`+
-    groups[k].map(i=>{const it=l.items[i];return `<tr>${LDM_COLS.map(([key,,cls])=>`<td class="${cls}"><input ${dis} data-i="${i}" data-k="${key}" value="${escH(it[key]??'')}" ${key==='kit'?'list="ldmKitList"':''}/></td>`).join('')}<td class="c-x"><button class="ldm-del edit-only" data-del="${i}" title="Borrar ítem">✕</button></td></tr>`;}).join('')).join('');
+    groups[k].map(i=>{const it=l.items[i];return `<tr>${LDM_COLS.map(([key,,cls])=>key==='foto'
+      ?`<td class="${cls}">${it.foto?`<img class="ldm-thumb" src="${escH(it.foto)}" data-foto="${i}" alt="" loading="lazy"/>`:''}<label class="ldm-foto-btn edit-only" title="${it.foto?'Cambiar foto':'Agregar foto'}">📷<input type="file" accept="image/*" data-fotoin="${i}" style="display:none"/></label>${it.foto?`<button class="ldm-del edit-only" data-fotodel="${i}" title="Quitar foto">✕</button>`:''}</td>`
+      :`<td class="${cls}"><input ${dis} data-i="${i}" data-k="${key}" value="${escH(it[key]??'')}" ${key==='kit'?'list="ldmKitList"':''}/></td>`).join('')}<td class="c-x"><button class="ldm-del edit-only" data-del="${i}" title="Borrar ítem">✕</button></td></tr>`;}).join('')).join('');
   box.innerHTML=`
     <div class="panel-hdr">
       <input id="ldmNombre" ${dis} value="${escH(l.nombre||'')}" placeholder="Nombre de la lista (ej: QM-05505C — Reguladora 3000 Nm3/h)" style="flex:1;background:transparent;border:1px solid transparent;border-radius:4px;padding:5px 8px;color:var(--primary);font-size:14px;font-weight:700;font-family:inherit;outline:none"/>
@@ -2595,7 +2614,7 @@ function renderLdmDetail(){
     <div class="panel-body">
       <div class="ldm-sec">Equipos con esta lista</div>
       <div class="ldm-chips">${chips}
-        <select id="ldmAssignSel" class="edit-only"><option value="">+ Asignar equipo…</option>${opts}</select>
+        <div class="ldm-pick edit-only"><input id="ldmAssignQ" autocomplete="off" placeholder="+ Asignar equipo: buscá por código o descripción…"/><div class="ldm-pick-dd" id="ldmAssignDd"></div></div>
       </div>
       <div class="ldm-sec" style="justify-content:space-between">
         <span>Ítems (${l.items.length})</span>
@@ -2611,7 +2630,7 @@ function renderLdmDetail(){
       ${l.items.length?`<div class="ldm-tbl-wrap"><table class="ldm-tbl">
         <thead><tr>${LDM_COLS.map(([,lbl,cls])=>`<th class="${cls}">${lbl}</th>`).join('')}<th class="c-x"></th></tr></thead>
         <tbody>${rows||`<tr><td colspan="${LDM_COLS.length+1}" style="padding:16px;text-align:center;color:var(--fg-muted)">Sin ítems que coincidan.</td></tr>`}</tbody>
-      </table></div>`:`<div class="empty" style="padding:24px"><div class="ei">📋</div><p>Lista vacía. Agregá ítems a mano o importalos desde un Excel.<br><span style="font-size:10px">Columnas reconocidas: Kit/Sistema, N° de parte, Descripción, Cantidad, Unidad, Proveedor, Notas.</span></p></div>`}
+      </table></div>`:`<div class="empty" style="padding:24px"><div class="ei">📋</div><p>Lista vacía. Agregá ítems a mano o importalos desde un Excel.<br><span style="font-size:10px">Columnas reconocidas: Kit/Sistema, Part number, Descripción, Cantidad, Foto (link), Ref. interna QM, Proveedor, Precio.</span></p></div>`}
     </div>`;
   // eventos
   const nm=document.getElementById('ldmNombre');
@@ -2621,14 +2640,58 @@ function renderLdmDetail(){
     if(!confirm(`¿Eliminar la lista "${l.nombre||'(sin nombre)'}" con ${l.items.length} ítems?\n\nLos equipos no se borran, solo quedan sin lista.`))return;
     ldms=ldms.filter(x=>x.id!==l.id);selLdmId=null;saveLdms();renderMant();showToast('🗑 Lista eliminada');
   });
-  document.getElementById('ldmAssignSel').addEventListener('change',e=>{
+  // buscador de equipos para asignar (código, descripción o tipo; varias palabras)
+  const aq=document.getElementById('ldmAssignQ'), add=document.getElementById('ldmAssignDd');
+  let aMatches=[], aAct=0;
+  const asignar=id=>{
     if(blockIfReadOnly())return;
-    const id=e.target.value;if(!id)return;
     const other=ldmOfEq(id);
-    if(other&&!confirm(`${eqLabel(id)} ya tiene la lista "${other.nombre}". ¿Pasarlo a esta lista?`)){e.target.value='';return;}
+    if(other&&!confirm(`${eqLabel(id)} ya tiene la lista "${other.nombre}". ¿Pasarlo a esta lista?`))return;
     if(other)other.equipoIds=other.equipoIds.filter(x=>x!==id);
     l.equipoIds.push(id);saveLdms();renderMant();showToast(`🔧 ${eqLabel(id)} asignado`);
+    const n=document.getElementById('ldmAssignQ');if(n)n.focus();
+  };
+  const drawPick=()=>{
+    const words=normTxt(aq.value).split(/\s+/).filter(Boolean);
+    aMatches=asignables.filter(e=>{const t=normTxt([e.id,e.nombre,e.tipo].join(' '));return words.every(w=>t.includes(w));});
+    if(aAct>=aMatches.length)aAct=0;
+    add.innerHTML=aMatches.length?aMatches.slice(0,80).map((e,j)=>{const o=ldmOfEq(e.id);
+      return `<div class="ldm-pick-o ${j===aAct?'act':''}" data-id="${escH(e.id)}"><b>${escH(e.id)}</b>${escH(e.nombre||'')}${o?` <small>· ya tiene: ${escH(o.nombre)}</small>`:''}</div>`;}).join('')
+      +(aMatches.length>80?`<div class="ldm-pick-o" style="cursor:default;color:var(--fg-muted)">… ${aMatches.length-80} más, seguí escribiendo</div>`:'')
+      :`<div class="ldm-pick-o" style="cursor:default;color:var(--fg-muted)">Sin equipos que coincidan</div>`;
+    add.classList.add('open');
+  };
+  aq.addEventListener('focus',drawPick);
+  aq.addEventListener('input',()=>{aAct=0;drawPick();});
+  aq.addEventListener('blur',()=>setTimeout(()=>add.classList.remove('open'),150));
+  aq.addEventListener('keydown',e=>{
+    if(e.key==='ArrowDown'){e.preventDefault();aAct=Math.min(aAct+1,Math.min(aMatches.length,80)-1);drawPick();add.querySelector('.act')?.scrollIntoView({block:'nearest'});}
+    else if(e.key==='ArrowUp'){e.preventDefault();aAct=Math.max(aAct-1,0);drawPick();add.querySelector('.act')?.scrollIntoView({block:'nearest'});}
+    else if(e.key==='Enter'){e.preventDefault();if(aMatches[aAct])asignar(aMatches[aAct].id);}
+    else if(e.key==='Escape'){aq.value='';add.classList.remove('open');aq.blur();}
   });
+  add.addEventListener('mousedown',e=>{const o=e.target.closest('[data-id]');if(!o)return;e.preventDefault();asignar(o.dataset.id);});
+  // fotos de ítems (se suben a ImgBB; en la lista solo se guarda el link)
+  box.querySelectorAll('[data-foto]').forEach(img=>img.addEventListener('click',()=>{
+    const fotos=idx.map(i=>l.items[i].foto).filter(Boolean);
+    openLightbox(fotos,Math.max(0,fotos.indexOf(l.items[+img.dataset.foto].foto)));
+  }));
+  box.querySelectorAll('[data-fotoin]').forEach(inp=>inp.addEventListener('change',async()=>{
+    const f=inp.files[0];inp.value='';if(!f||blockIfReadOnly())return;
+    if(!imgbbKey){showToast('📷 Para subir fotos configurá la clave de ImgBB en ☁ Nube',true);return;}
+    const it=l.items[+inp.dataset.fotoin];if(!it)return;
+    showToast('⏳ Subiendo foto…');
+    try{
+      const data=await compressImage(f,1200,0.75,400000);
+      it.foto=await uploadToImgBB(data);
+      saveLdms();renderLdmDetail();showToast('📷 Foto agregada');
+    }catch(e){console.warn('foto ldm',e);showToast('❌ No se pudo subir la foto',true);}
+  }));
+  box.querySelectorAll('[data-fotodel]').forEach(b=>b.addEventListener('click',()=>{
+    if(blockIfReadOnly())return;
+    const it=l.items[+b.dataset.fotodel];if(!it||!confirm('¿Quitar la foto de este ítem?'))return;
+    delete it.foto;saveLdms();renderLdmDetail();
+  }));
   box.querySelectorAll('[data-unassign]').forEach(b=>b.addEventListener('click',()=>{
     if(blockIfReadOnly())return;
     l.equipoIds=l.equipoIds.filter(x=>x!==b.dataset.unassign);saveLdms();renderMant();
@@ -2638,7 +2701,7 @@ function renderLdmDetail(){
   document.getElementById('ldmAddBtn').addEventListener('click',()=>{
     if(blockIfReadOnly())return;
     const lastKit=l.items.length?l.items[l.items.length-1].kit||'':'';
-    l.items.push({kit:lastKit,parte:'',desc:'',cant:'',unidad:'',proveedor:'',notas:''});
+    l.items.push({kit:lastKit,parte:'',desc:'',cant:'',refqm:'',proveedor:'',precio:''});
     ldmItemQ='';saveLdms();renderMant();
     const ins=document.querySelectorAll(`#ldmDetail input[data-i="${l.items.length-1}"]`);(ins[1]||ins[0])?.focus();
   });
@@ -2681,6 +2744,9 @@ function loadXLSX(){
 }
 const LDM_HDR_MATCH=[
   ['kit',/^(kit|sistema|grupo|conjunto|subconjunto|seccion|categoria)/],
+  ['refqm',/(qm|intern)/],
+  ['precio',/^(precio|price|costo|cost|valor|importe|p\.?\s*unit)/],
+  ['foto',/^(foto|imagen|image|photo|url)/],
   ['parte',/(n.?\s*de\s*parte|nro.*parte|numero.*parte|part.*n|^p\/?n$|^pn$|codigo|^cod|part number|referencia|^ref)/],
   ['desc',/^(desc|denominacion|detalle|componente|repuesto|articulo|material)/],
   ['cant',/^(cant|qty|quantity|ctd)/],
@@ -2708,10 +2774,14 @@ async function importLdmExcel(l,file){
   }
   if(!map){showToast('❌ No reconocí las columnas. Descargá la "📄 Plantilla" y usá esos encabezados.',true);return;}
   const items=rowsAll.slice(hdrRow+1).map(row=>{
-    const it={};LDM_COLS.forEach(([k])=>{it[k]=k in map?String(row[map[k]]??'').trim():'';});return it;
+    const it={};
+    LDM_COLS.forEach(([k])=>{if(k in map)it[k]=String(row[map[k]]??'').trim();else if(k!=='foto')it[k]='';});
+    LDM_OLD_COLS.forEach(([k])=>{if(k in map)it[k]=String(row[map[k]]??'').trim();});
+    if(it.foto!==undefined&&!/^https?:\/\//i.test(it.foto))delete it.foto;
+    return it;
   }).filter(it=>it.desc||it.parte);
   if(!items.length){showToast('El archivo no tiene ítems para importar',true);return;}
-  const cols=LDM_COLS.filter(([k])=>k in map).map(([,lbl])=>lbl).join(', ');
+  const cols=[...LDM_COLS,...LDM_OLD_COLS].filter(([k])=>k in map).map(([,lbl])=>lbl).join(', ');
   let modo='agregar';
   if(l.items.length){
     const rep=confirm(`Se encontraron ${items.length} ítems (columnas: ${cols}).\n\nLa lista ya tiene ${l.items.length} ítems.\n\nAceptar = REEMPLAZAR los ítems actuales\nCancelar = AGREGARLOS al final`);
@@ -2723,10 +2793,12 @@ async function importLdmExcel(l,file){
 }
 async function exportLdmExcel(l){
   let XLSX;try{XLSX=await loadXLSX();}catch(e){showToast('❌ '+e.message,true);return;}
-  const hdr=LDM_COLS.map(([,lbl])=>lbl);
-  const data=[hdr,...(l?l.items:[]).map(it=>LDM_COLS.map(([k])=>it[k]??''))];
+  const its=l?l.items:[];
+  const cols=[...LDM_COLS,...LDM_OLD_COLS.filter(([k])=>its.some(it=>it[k]))];
+  const data=[cols.map(([,lbl])=>lbl),...its.map(it=>cols.map(([k])=>it[k]??''))];
   const ws=XLSX.utils.aoa_to_sheet(data);
-  ws['!cols']=[{wch:18},{wch:18},{wch:40},{wch:7},{wch:9},{wch:18},{wch:30}];
+  const W={kit:18,parte:18,desc:40,cant:7,foto:30,refqm:16,proveedor:18,precio:10,unidad:9,notas:30};
+  ws['!cols']=cols.map(([k])=>({wch:W[k]||14}));
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'LDM');
   const name=l?('LDM_'+(l.nombre||l.id).replace(/[\\/:*?"<>|]+/g,'-').slice(0,60)):'Plantilla_LDM';
   XLSX.writeFile(wb,name+'.xlsx');
